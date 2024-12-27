@@ -48,8 +48,5 @@ def run_joiner():
   while True:
     joiner(usertoken, status)
     time.sleep(30)
-async def on_connect():
-  await client.change_presence(activity = discord.Streaming(name = " Gemwizz ", url = "https://twitch.tv/gemop"))
-
 keep_alive()
 run_joiner()
