@@ -6,7 +6,7 @@ import requests
 import websocket
 from keep_alive import keep_alive
 
-status = "online" #online/dnd/idle
+status = "dnd" #online/dnd/idle
 
 GUILD_ID = 951792509409976420
 CHANNEL_ID = 1191312715801698395
@@ -48,6 +48,8 @@ def run_joiner():
   while True:
     joiner(usertoken, status)
     time.sleep(30)
+async def on_connect():
+  await client.change_presence(activity = discord.Streaming(name = " Gemwizz ", url = "https://twitch.tv/gemop"))
 
 keep_alive()
 run_joiner()
