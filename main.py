@@ -3,8 +3,11 @@ import sys
 import json
 import time
 import requests
-import websocket # This should be the 'websocket-client' library
-import threading # For handling heartbeats
+import threading
+# Explicitly import from websocket-client. This will cause an ImportError
+# if the wrong 'websocket' module is being loaded.
+from websocket import create_connection, WebSocketConnectionClosedException, WebSocketException
+
 from keep_alive import keep_alive # Assuming this is correctly defined elsewhere
 
 # --- Configuration ---
@@ -19,7 +22,7 @@ SELF_DEAF = False
 usertoken = os.getenv("TOKEN")
 if not usertoken:
   print("[ERROR] Please add a Discord user token as an environment variable named 'TOKEN'.")
-  sys.exit()
+  sys.exit(1) # Exit with an error code
 
 headers = {"Authorization": usertoken, "Content-Type": "application/json"}
 
@@ -34,7 +37,7 @@ try:
 except requests.exceptions.RequestException as e:
   print(f"[ERROR] Failed to validate token or fetch user info: {e}")
   print("Your token might be invalid or there's a network issue. Please check it again.")
-  sys.exit()
+  sys.exit(1) # Exit with an error code
 
 # --- Heartbeat Thread Function ---
 def send_heartbeat(ws, interval):
@@ -46,7 +49,7 @@ def send_heartbeat(ws, interval):
             ws.send(json.dumps(payload))
             # print(f"[DEBUG] Sent heartbeat. Next in {interval / 1000:.1f} seconds.")
             time.sleep(interval / 1000)
-        except websocket.WebSocketConnectionClosedException:
+        except WebSocketConnectionClosedException:
             print("[INFO] Heartbeat thread detected WebSocket connection closed.")
             break
         except Exception as e:
@@ -62,10 +65,9 @@ def joiner(token, status):
     ws = None # Initialize ws to None
     heartbeat_thread = None # Initialize heartbeat_thread to None
     try:
-        # Initialize WebSocket client. This *should* work without arguments for websocket-client.
-        ws = websocket.WebSocket()
         print("[INFO] Attempting to connect to Discord Gateway...")
-        ws.connect('wss://gateway.discord.gg/?v=9&encoding=json')
+        # Use create_connection to establish the WebSocket connection
+        ws = create_connection('wss://gateway.discord.gg/?v=9&encoding=json')
         print("[INFO] Connected to Discord Gateway.")
 
         # Receive the 'Hello' payload from Discord
@@ -114,26 +116,29 @@ def joiner(token, status):
         while not ws.closed:
             try:
                 message = ws.recv()
-                # print(f"[DEBUG] Received: {message[:100]}...") # Print first 100 chars
-                # You can add logic here to process Discord Gateway events
-            except websocket.WebSocketConnectionClosedException:
-                print("[INFO] WebSocket connection closed by Discord or client.")
+                if message:
+                    # print(f"[DEBUG] Received: {message[:100]}...") # Print first 100 chars
+                    # You can add logic here to process Discord Gateway events, e.g.,
+                    # if "READY" in message: print("Bot is ready!")
+                    pass # Currently, we just keep the connection open
+            except WebSocketConnectionClosedException:
+                print("[INFO] WebSocket connection closed by Discord or client during receive.")
                 break
             except Exception as e:
                 print(f"[ERROR] Error receiving message: {e}")
                 break
 
-    except websocket.WebSocketException as e:
-        print(f"[ERROR] WebSocket error: {e}. This might be due to an invalid URL or network issue.")
+    except WebSocketException as e:
+        print(f"[ERROR] WebSocket error during connection or operation: {e}")
+        print("This often indicates a network issue, invalid WebSocket URL, or server-side disconnection.")
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred in joiner: {e}")
     finally:
         if ws and not ws.closed:
-            print("[INFO] Closing WebSocket connection.")
+            print("[INFO] Closing WebSocket connection gracefully.")
             ws.close()
-        if heartbeat_thread and heartbeat_thread.is_alive():
-            print("[INFO] Stopping heartbeat thread.")
-            # No explicit stop, rely on ws.closed or main program exit
+        # No explicit stop for daemon thread, it will exit with main program or when ws.closed
+        print("[INFO] Joiner function finished. WebSocket connection handled.")
 
 
 def run_joiner():
@@ -142,7 +147,7 @@ def run_joiner():
   print("Starting Discord Voice Channel Joiner...")
   while True:
     joiner(usertoken, status)
-    print("[INFO] Reconnecting in 30 seconds...")
+    print("[INFO] Attempting to reconnect in 30 seconds...")
     time.sleep(30) # Reconnects every 30 seconds
 
 # --- Application Entry Point ---
